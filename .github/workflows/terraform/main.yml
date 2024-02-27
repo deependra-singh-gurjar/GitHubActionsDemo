@@ -1,0 +1,68 @@
+name: Terraform Workflow
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validate Terraform Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+        
+      - name: Install necessary packages
+        run: |
+          sudo apt-get update && sudo apt-get install -y curl gnupg unzip
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          curl -O https://releases.hashicorp.com/terraform/0.15.0/terraform_0.15.0_linux_amd64.zip
+          unzip terraform_0.15.0_linux_amd64.zip
+          sudo mv terraform /usr/local/bin/
+      
+      - name: Terraform setup
+        run: |
+          rm -rf .terraform
+          terraform --version
+          terraform init -backend-config="access_key=$access_key"
+        env:
+          access_key: ${{ secrets.ACCESS_KEY }}
+
+      - name: Validate Terraform Configuration
+        run: terraform validate
+
+  plan:
+    name: Terraform Plan
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -out=tfplan
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v2
+        with:
+          name: tfplan
+          path: tfplan
+
+  apply:
+    name: Terraform Apply
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v2
+        with:
+          name: tfplan
+          path: tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false tfplan
+        env:
+          TF_IN_AUTOMATION: 1
